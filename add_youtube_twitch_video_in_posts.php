@@ -14,6 +14,9 @@ AIzaSyBsZfBUcC14ni0ZZYmkKr6oZKFkkK554ag
 
 */
 
+
+// ini_set( display_errors, 0);
+
 function debug_aytv($arr) {
     echo "<pre>";
     print_r($arr);
@@ -25,6 +28,11 @@ define( 'YOUTUBE_CATEGORY', $options['youtube_category'] );
 define( 'YOUTUBE_APIKEY', $options['youtube_apikey'] );
 define( 'TWITCH_CATEGORY', $options['twitch_category'] );
 define( 'TWITCH_APIKEY', $options['twitch_apikey'] );
+define( 'COUNT_VIDEO', $options['count_video'] );
+// define( 'PARSING_PERIOD', $options['parsing_period'] );
+
+define( 'WIDTH_VIDEO', $options['width_video'] );
+define( 'HEIGHT_VIDEO', $options['height_video'] );
 
 // url до папки с плагином
 define( 'YT_PLUGIN_DIR', plugin_dir_url(__FILE__) );
@@ -33,13 +41,13 @@ define( 'YT_PLUGIN_DIR', plugin_dir_url(__FILE__) );
 // url папки с каналами Youtube
 $upload = wp_upload_dir();
 $upload_dir = $upload['basedir'];
-$upload_dir_youtube = $upload_dir . '/youtube-twitch-parser/youtube_channels';
+$upload_dir_youtube = $upload_dir . '/youtube-twitch-parser-cache/youtube_channels';
 define( 'YOUTUBE_CHANNELS_DIR', $upload_dir_youtube );
 
 // url папки с каналами Twitch
 $upload = wp_upload_dir();
 $upload_dir = $upload['basedir'];
-$upload_dir_twitch = $upload_dir . '/youtube-twitch-parser/twitch_channels';
+$upload_dir_twitch = $upload_dir . '/youtube-twitch-parser-cache/twitch_channels';
 define( 'TWITCH_CHANNELS_DIR', $upload_dir_twitch );
 
 
@@ -52,9 +60,13 @@ function aytvp_activation() {
     if ( get_option( 'youtube_twitch_parser_settings', '' ) == '' ) {
         $options = [
             'youtube_category' => '',
-            'youtube_apikey' => '',
-            'twitch_category' => '',
-            'twitch_apikey' => '',
+            'youtube_apikey'   => '',
+            'twitch_category'  => '',
+            'twitch_apikey'    => '',
+            'count_video'      => 2,
+            // 'parsing_period'   => 604800,
+            'width_video'      => 320,
+            'height_video'     => 280,
         ];
         // wp_unslash( $options );
         update_option( 'youtube_twitch_parser_settings', $options, true );
@@ -66,10 +78,10 @@ function aytvp_activation() {
 	$upload_dir = $upload['basedir'];
 
     // Создаем общую папку `bik` в wp-content/uploads
-    $upload_dir = $upload_dir . '/youtube-twitch-parser';
+    $upload_dir = $upload_dir . '/youtube-twitch-parser-cache';
 
 	if ( ! wp_mkdir_p( $upload_dir ) ) {
-		echo "Не удалось создать директорию <pre>youtube-twitch-parser</pre>";
+		echo "Не удалось создать директорию <pre>youtube-twitch-parser-cache</pre>";
         exit();
 	}
 
@@ -90,15 +102,15 @@ function aytvp_activation() {
 // функция получения id канала по id поста к которому относится канал
 function get_id_youtube_channel_from_post_id() {
     global $post;
-    $id_chanell = get_post_meta( $post->ID, _youtube_id_chanell, true );
-    return $id_chanell;
+    $id_channel = get_post_meta( $post->ID, _youtube_id_channel, true );
+    return $id_channel;
 }
 
 // функция получения id канала по id поста к которому относится канал
 function get_id_twitch_channel_from_post_id() {
     global $post;
-    $id_chanell = get_post_meta( $post->ID, _twitch_id_chanell, true );
-    return $id_chanell;
+    $id_channel = get_post_meta( $post->ID, _twitch_id_channel, true );
+    return $id_channel;
 }
 
 
@@ -106,7 +118,7 @@ function get_id_twitch_channel_from_post_id() {
 // folder может быть == youtube-channels или twitch-channels
 function search_in_dir ( $folder, $file ) {
     $upload = wp_upload_dir();
-    $upload_dir = $upload['basedir'] . '/youtube-twitch-parser' ;
+    $upload_dir = $upload['basedir'] . '/youtube-twitch-parser-cache' ;
     $dir = $upload_dir . '/' . $folder;
     $file_list = scandir( $dir );
     return ( in_array( $file, $file_list ) ) ? true : false;
@@ -114,13 +126,13 @@ function search_in_dir ( $folder, $file ) {
 
 
 // Парсим канал на Youtube и пишем данные в файл
-function youtube_parsing( $channel_id, $cnt = 3) {
+function youtube_parsing( $channel_id, $cnt = COUNT_VIDEO ) {
     // специальный адрес, отвечающий за выдачу фида
     $url = 'https://www.googleapis.com/youtube/v3/search?part=snippet'
          . '&channelId=' . $channel_id
          . '&order=viewCount'    // упорядочивать по кол-ву просмотров
          . '&maxResults=' . $cnt  // за раз получать не более $cnt результатов
-        //  . '&fields=items/id/videoId'  // нам нужны только идентификаторы видео
+         . '&fields=items/id/videoId'  // нам нужны только идентификаторы видео
          . '&key=' . YOUTUBE_APIKEY;
 
     $buf = file_get_contents( $url );
@@ -128,11 +140,21 @@ function youtube_parsing( $channel_id, $cnt = 3) {
     // декодируем JSON данные
     $json = json_decode($buf, true);
 
+    //  если данных нет —> увеличиваем счетчик
+    // нужно, когда youtube отдает пустой массив
+    if ( count( $json['items'] ) < $cnt )  {
+        $cnt++;
+        $url = 'https://www.googleapis.com/youtube/v3/search?part=snippet'
+             . '&channelId=' . $channel_id
+             . '&order=viewCount'    // упорядочивать по кол-ву просмотров
+             . '&maxResults=' . $cnt  // за раз получать не более $cnt результатов
+             . '&fields=items/id/videoId'  // нам нужны только идентификаторы видео
+             . '&key=' . YOUTUBE_APIKEY;
+        $buf = file_get_contents( $url );
+        $json = json_decode( $buf, true );
+    }
+
     $arr = array();
-
-    # если данных нет —> на выход
-    if ( empty( $json['items'] ) ) return $arr;
-
     foreach( $json['items'] as $v ) {
         // $t = array(
             // 'video_id' => $v['id']['videoId'], #id
@@ -145,13 +167,31 @@ function youtube_parsing( $channel_id, $cnt = 3) {
         $arr[] = $t;
     }
 
-    // записываем в файл
-    // if (file_exists)
-    // если файл доступен -> пишем в него, если нет -> создаем
+    $to_text = implode( "\r\n", $arr );
 
-    return $arr;
+    // создаем файл и записываем данные
+    $upload = wp_upload_dir();
+    $dir = $upload['basedir'] . '/youtube-twitch-parser-cache/youtube-channels' ;
+    $file = $dir . "/" . $channel_id . ".txt";
+    file_put_contents( $file, $to_text);
+    chmod( $file, 0777 );
+
+    $arr = file( $file, FILE_SKIP_EMPTY_LINES );
+    $video_array = array_diff( $arr, array('', 0, null) );
+    return $video_array;
 }
 
+
+
+// html код для вставки в пост
+function render_video_from_cache_file( $arr ) {
+    $div = '<h1>Популярные видео на канале</h1><hr>';
+    foreach ( $arr as $id_video ) {
+        $div .= "<span style='padding-bottom: 25px; padding-right: 25px;'><iframe width='" . WIDTH_VIDEO . "' height=' " . HEIGHT_VIDEO . "' src='https://www.youtube.com/embed/$id_video?rel=0&amp;controls=0&amp;showinfo=0' frameborder='0' allowfullscreen></iframe></span>";
+    }
+    $div .= '<hr>';
+    return $div;
+}
 
 add_filter( 'the_content', 'add_video_to_content' );
 function add_video_to_content( $content ) {
@@ -159,23 +199,41 @@ function add_video_to_content( $content ) {
     // echo $post->ID;
 
     if ( in_category( YOUTUBE_CATEGORY ) ) {
+        // получаем id канала
         $channel_id = get_id_youtube_channel_from_post_id();
+
+        // проверяем наличие файла
         $is_file_video = search_in_dir( 'youtube-channels',  $channel_id. '.txt');
 
-        $file = YOUTUBE_CHANNELS_DIR . '/' . $channel_id . ".txt";
+        // если файл есть
+        if ( $is_file_video ) {
 
-        $links = youtube_parsing( $channel_id );
-        foreach ($links as $id_video) {
-            //  https://www.youtube.com/watch?v=O8W4P2Gre_g
-            $link .= "<iframe width='320' height='180' src='https://www.youtube.com/embed/$id_video?rel=0&amp;controls=0&amp;showinfo=0' frameborder='0' allowfullscreen></iframe>";
-            // $link .= 'https://www.youtube.com/watch?v=' . $id_video . '</br>';
+            $upload = wp_upload_dir();
+            $dir = $upload['basedir'] . '/youtube-twitch-parser-cache/youtube-channels' ;
+            $file = $dir . "/" . $channel_id . ".txt";
+
+            // проверяем дату файла и сравниваем со значением кэша
+            // если кэш устарел
+            if ( time() - @filemtime( $file ) > 1 ) {
+                // обновляем данные в файле, т.е ПАРСИМ Youtube
+                // и пишем в файл, который есть
+                $arr = youtube_parsing( $channel_id );
+                $out = $content . render_video_from_cache_file( $arr );
+                // return $out;
+                // читаем файл и отдаем html код - отдельная функция
+            } else {
+                // отдаем данные из кэша,
+                $arr = youtube_parsing( $channel_id );
+                $out = $content . render_video_from_cache_file( $arr );
+                // return $out;
+            }
+
+        } else { // если файла нет
+            $arr = youtube_parsing( $channel_id );
+            $out = $content . render_video_from_cache_file( $arr );
+            // return $out;
         }
-
-        $out = $content . $link;
-        // $out .= '<br>';
-        // $out .= YOUTUBE_CHANNELS_DIR;
-
-    	return $out;
+        return $out;
     }
 
     if ( in_category( TWITCH_CATEGORY ) ) {
@@ -196,63 +254,24 @@ function aytv_create_menu() {
 // страница настроек плагина
 function aytvp_settings() {
 
-
-    $x = youtube_parsing( 'UCvBGdmck9fnkFa1jWucN87Q' );
-    debug_aytv( $x );
-
-    $channel_id = 'UCvBGdmck9fnkFa1jWucN87Q';
-    $is_file_video = search_in_dir( 'youtube-channels',  $channel_id. '.txt');
-
-    // если файл есть
-    if ( $is_file_video ) {
-        // проверяем дату файла и сравниваем со значением кэша
-        // $file = YOUTUBE_CHANNELS_DIR . '/' . $channel_id . ".txt";
-
-        $upload = wp_upload_dir();
-        $dir = $upload['basedir'] . '/youtube-twitch-parser/youtube-channels' ;
-        $file = $dir . "/" . $channel_id . ".txt";
-        debug_aytv( file_get_contents( $file ) );
-
-        // если кэш устарел
-        if ( time() - @filemtime( $file ) >= 3600 ) {
-            // обновляем данные в файле, т.е ПАРСИМ Youtube
-            // и пишем в файл, который есть
-
-            // читаем файл и отдаем html код - отдельная функция
-        } else {
-            // отдаем данные из кэша,
-            // т.е. читаем файл и создаем html код - отдельная функция.
-        }
-
-    } else { // если файла нет
-        // парсим Youtube = получаем список id видео
-        $id_video_array = youtube_parsing( $channel_id );
-        $to_text = implode( ' | ', $id_video_array );
-
-        // создаем файл и записываем данные
-        $upload = wp_upload_dir();
-        $dir = $upload['basedir'] . '/youtube-twitch-parser/youtube-channels' ;
-        $file = $dir . "/" . $channel_id . ".txt";
-        file_put_contents( $file, $to_text);
-        chmod( $file, 0777 );
-
-
-        // читаем файл и создаем html код - отдельная функция.
-
-    }
-
-
-
     // Сохраняем настройки в базу
     if ( !empty($_POST['do_save']) ) {
         $options = [
-            'youtube_category' => $_POST['id_youtube_category'],
-            'youtube_apikey' => $_POST['youtube_apikey'],
-            'twitch_category' => $_POST['id_twitch_category'],
-            'twitch_apikey' => $_POST['twitch_apikey']
+            'youtube_category'   => $_POST['id_youtube_category'],
+            'youtube_apikey'     => $_POST['youtube_apikey'],
+            'twitch_category'    => $_POST['id_twitch_category'],
+            'twitch_apikey'      => $_POST['twitch_apikey'],
+            'count_video'        => $_POST['count_video'],
+            // 'parsing_period'   => $_POST['parsing_period'],
+            'width_video'        => $_POST['width_video'],
+            'height_video'       => $_POST['height_video'],
         ];
         // wp_unslash( $options );
-        update_option( 'youtube_twitch_parser_settings', $options, true );
+        $result = update_option( 'youtube_twitch_parser_settings', $options, true );
+        if ( $result ) {
+            echo "<h1 style='color: green;'>Настройки успeшно сохранились</h1><hr>";
+        }
+
     }
 
 
@@ -261,15 +280,61 @@ function aytvp_settings() {
     // получаем массив с настройками
     $options = get_option( 'youtube_twitch_parser_settings', '' );
 
+
+    // формируем список категорий сайта
+    $args = array(
+    	'type'         => 'post',
+    	'child_of'     => 0,
+    	'parent'       => '',
+    	'orderby'      => 'name',
+    	'order'        => 'ASC',
+    	'hide_empty'   => 0,
+    	'hierarchical' => 1,
+    	'exclude'      => '',
+    	'include'      => '',
+    	'number'       => 0,
+    	'taxonomy'     => 'category',
+    	'pad_counts'   => false,
+    );
+    $categories = get_categories( $args );
+    if( $categories ){
+    	foreach( $categories as $key ){
+    		// Данные в объекте $cat
+
+    		// $cat->term_id
+    		$cat[$key->term_id] = $key->name;
+    		// $cat->slug (rubrika-1)
+    		// $cat->term_group (0)
+    		// $cat->term_taxonomy_id (4)
+    		// $cat->taxonomy (category)
+    		// $cat->description (Текст описания)
+    		// $cat->parent (0)
+    		// $cat->count (14)
+    		// $cat->object_id (2743)
+    		// $cat->cat_ID (4)
+    		// $cat->category_count (14)
+    		// $cat->category_description (Текст описания)
+    		// $cat->cat_name (Рубрика 1)
+    		// $cat->category_nicename (rubrika-1)
+    		// $cat->category_parent (0)
+
+    	}
+    }
+
+
+
     ?>
 
     <style>
         .div-settings {
-            width: 45%;
+            width: 55%;
             /*height: 100px;*/
             background-color: #E6E9EB;
             border-radius: 5px;
             padding: 10px;
+        }
+        table td .max-width {
+            width: 50px;
         }
     </style>
 
@@ -278,20 +343,30 @@ function aytvp_settings() {
         <form action="" method="POST">
         <table border="0" cellspacing="0" cellpadding="10">
             <tr>
-                <td>
+                <td class="max-width">
                     <strong>Youtube</strong>
                 </td>
             </tr>
 
             <tr>
-                <td>
-                    <label for="youtube">ID категории Youtube (цифра)</label><br>
-                    <input id="youtube" type="number" min="1" name="id_youtube_category" value="<?php echo $options['youtube_category']; ?>" autocomplete="off">
+                <td class="max-width">
+                    <label for="youtube">Категория Youtube</label><br>
+                    <!-- <input id="youtube" type="number" min="1" name="id_youtube_category" value="<?php echo $options['youtube_category']; ?>" autocomplete="off"> -->
+                    <select name="id_youtube_category">
+                        <option value="" disabled="">-------</option>
+                        <?php foreach ($cat as $cat_id => $name): ?>
+                            <?php if ( $options['youtube_category'] == $cat_id) { ?>
+                                <option value="<?php echo $cat_id; ?>" selected=""><?php echo $name;?></option>
+                            <?php } else { ?>
+                            <option value="<?php echo $cat_id; ?>"><?php echo $name;?></option>
+                            <?php } ?>
+                        <?php endforeach; ?>>
+                    </select>
                 </td>
 
-                <td>
+                <td class="max-width">
                     <label for="youtubeapikey">Youtube API key</label><br>
-                    <input id="youtubeapikey" type="text" name="youtube_apikey" value="<?php echo $options['youtube_apikey']; ?>" autocomplete="off">
+                    <input id="youtubeapikey" size="35" type="text" name="youtube_apikey" value="<?php echo $options['youtube_apikey']; ?>" autocomplete="off">
                 </td>
             </tr>
             <tr>
@@ -300,19 +375,63 @@ function aytvp_settings() {
                 </td>
             </tr>
             <tr>
-                <td>
-                    <label for="twitch">ID категории Twitch (цифра)</label><br>
-                    <input id="twitch" type="number" min="1" name="id_twitch_category" value="<?php echo $options['twitch_category']; ?>" autocomplete="off">
+                <td class="max-width">
+                    <label for="twitch">Категория Twitch</label><br>
+                    <!-- <input id="twitch" type="number" min="1" name="id_twitch_category" value="<?php //echo $options['twitch_category']; ?>" autocomplete="off"> -->
+                    <select name="id_twitch_category">
+                        <option value="" disabled="">-------</option>
+                        <?php foreach ($cat as $cat_id => $name): ?>
+                            <?php if ( $options['twitch_category'] == $cat_id) { ?>
+                                <option value="<?php echo $cat_id; ?>" selected=""><?php echo $name;?></option>
+                            <?php } else { ?>
+                            <option value="<?php echo $cat_id; ?>"><?php echo $name;?></option>
+                            <?php } ?>
+                        <?php endforeach; ?>>
+                    </select>
                 </td>
 
                 <td>
                     <label for="twitchapikey">Twitch API key</label><br>
-                    <input id="twitchapikey" type="text" name="twitch_apikey" value="<?php echo $options['twitch_apikey']; ?>" autocomplete="off">
+                    <input id="twitchapikey" size="35" type="text" name="twitch_apikey" value="<?php echo $options['twitch_apikey']; ?>" autocomplete="off">
                 </td>
             </tr>
+
+            <tr>
+                <td class="max-width">
+                    <label for="count-video">Кол-во видео<br> на странице</label><br>
+                    <?php
+                        // if ( $options['count_video'] = 1 ) {
+                        //     $count_video = 2;
+                        // } else {
+                        //     $count_video = $options['count_video'];
+                        // }
+                    ?>
+                    <input id="count-video" type="number" min="1" max="100" name="count_video" title="от 1 до 100" value="<?php echo $options['count_video']; ?>">
+                </td>
+
+                <td><br>
+                    <label for="">Ширина и высота превью</label><br>
+                    <input type="number" size="5" min="120" max="1080" name="width_video" value="<?php echo $options['width_video']; ?>"> x
+                    <input type="number" size="5" min="120" max="1080" name="height_video" value="<?php echo $options['height_video']; ?>">
+                </td>
+
+                <td>
+                    <!-- <label for="">Как часто парсим</label><br>
+                    <select name="parsing_period" id="">
+                    <?php //if ( $options['parsing_period'] = 604800 ) : ?>
+                        <option value="604800" selected>раз в неделю</option>
+                        <option value="2592000">раз в месяц</option>
+                    <?php //elseif ( $options['parsing_period'] = 2592000 ) : ?>
+                        <option value="604800">раз в неделю</option>
+                        <option value="2592000" selected>раз в месяц</option>
+                    <?php //endif; ?>
+                    </select> -->
+                </td>
+            </tr>
+
             <tr>
                 <td>
-                    <input type="submit" name="do_save" value="Сохранить">
+                    <p><input type="submit" name="do_save" value="Сохранить"></p>
                 </td>
             </tr>
         </table>
@@ -327,15 +446,8 @@ function aytvp_settings() {
 // Добавляем метабоксы
 add_action('add_meta_boxes', 'aytv_add_custom_boxes');
 function aytv_add_custom_boxes() {
-    // $youtube_category = get_option( 'aytv_youtube_category', '' );
-    // $twitch_category = get_option( 'aytv_twitch_category', '' );
-
-    // if ( in_category( $youtube_category ) ) {
-        add_meta_box( 'aytv_meta_box_youtube', 'Youtube', 'meta_box_youtube_id_chanell', 'post', 'side', 'high', null );
-    // }
-    // if ( in_category( $twitch_category ) ) {
-        add_meta_box( 'aytv_meta_box_twitch', 'Twitch', 'meta_box_twitch_id_chanell', 'post', 'side', 'high', null );
-    // }
+    add_meta_box( 'aytv_meta_box_youtube', 'Youtube', 'meta_box_youtube_id_channel', 'post', 'side', 'high', null );
+    add_meta_box( 'aytv_meta_box_twitch', 'Twitch', 'meta_box_twitch_id_channel', 'post', 'side', 'high', null );
 }
 
 
@@ -345,15 +457,15 @@ function aytv_add_custom_boxes() {
 *
 **/
 /* HTML код блока */
-function meta_box_youtube_id_chanell() {
+function meta_box_youtube_id_channel() {
 	wp_nonce_field( plugin_basename(__FILE__), 'aytv_youtube_noncename' );
     global $post;
-	echo '<label for="youtube_id_chanell">' . "Укажите id YOUTUBE канала" . '</label>';
-	echo '<input type="text" id= "youtube_id_chanell" name="youtube-id-chanell" value="' . get_post_meta( $post->ID, _youtube_id_chanell, true ) . '" size="25" />';
+	echo '<label for="youtube_id_channel">' . "Укажите id YOUTUBE канала" . '</label>';
+	echo '<input type="text" id= "youtube_id_channel" name="youtube-id-channel" value="' . get_post_meta( $post->ID, _youtube_id_channel, true ) . '" size="25" />';
 }
 
 /* Сохраняем данные, когда пост сохраняется */
-function save_youtube_id_chanell( $post_id ) {
+function save_youtube_id_channel( $post_id ) {
 	// проверяем nonce нашей страницы, потому что save_post может быть вызван с другого места.
 	if ( ! wp_verify_nonce( $_POST['aytv_youtube_noncename'], plugin_basename(__FILE__) ) )
 		return $post_id;
@@ -370,17 +482,18 @@ function save_youtube_id_chanell( $post_id ) {
 	}
 
 	// Убедимся что поле установлено.
-	if ( ! isset( $_POST['youtube-id-chanell'] ) )
+	if ( ! isset( $_POST['youtube-id-channel'] ) )
 		return;
 
 	// Все ОК. Теперь, нужно найти и сохранить данные
 	// Очищаем значение поля input.
-	$my_data = sanitize_text_field( $_POST['youtube-id-chanell'] );
-
-	// Обновляем данные в базе данных.
-	update_post_meta( $post_id, '_youtube_id_chanell', $my_data );
+	$my_data = sanitize_text_field( $_POST['youtube-id-channel'] );
+    if ( !empty( $my_data ) ) {
+        // Обновляем данные в базе данных.
+        update_post_meta( $post_id, '_youtube_id_channel', $my_data );
+    }
 }
-add_action( 'save_post', 'save_youtube_id_chanell' );
+add_action( 'save_post', 'save_youtube_id_channel' );
 
 
 
@@ -390,15 +503,15 @@ add_action( 'save_post', 'save_youtube_id_chanell' );
 *
 **/
 /* HTML код блока */
-function meta_box_twitch_id_chanell() {
+function meta_box_twitch_id_channel() {
 	wp_nonce_field( plugin_basename(__FILE__), 'aytv_twitch_noncename' );
     global $post;
-	echo '<label for="twitch_id_chanell">' . "Укажите id TWITCH канала" . '</label>';
-	echo '<input type="text" id="twitch_id_chanell" name="twitch-id-chanell" value="' . get_post_meta( $post->ID, _twitch_id_chanell, true ) . '" size="25" />';
+	echo '<label for="twitch_id_channel">' . "Укажите id TWITCH канала" . '</label>';
+	echo '<input type="text" id="twitch_id_channel" name="twitch-id-channel" value="' . get_post_meta( $post->ID, _twitch_id_channel, true ) . '" size="25" />';
 }
 
 /* Сохраняем данные, когда пост сохраняется */
-function save_twitch_id_chanell( $post_id ) {
+function save_twitch_id_channel( $post_id ) {
 	// проверяем nonce нашей страницы, потому что save_post может быть вызван с другого места.
 	if ( ! wp_verify_nonce( $_POST['aytv_twitch_noncename'], plugin_basename(__FILE__) ) )
 		return $post_id;
@@ -415,14 +528,16 @@ function save_twitch_id_chanell( $post_id ) {
 	}
 
 	// Убедимся что поле установлено.
-	if ( ! isset( $_POST['twitch-id-chanell'] ) )
+	if ( ! isset( $_POST['twitch-id-channel'] ) )
 		return;
 
 	// Все ОК. Теперь, нужно найти и сохранить данные
 	// Очищаем значение поля input.
-	$my_data = sanitize_text_field( $_POST['twitch-id-chanell'] );
+	$my_data = sanitize_text_field( $_POST['twitch-id-channel'] );
 
-	// Обновляем данные в базе данных.
-	update_post_meta( $post_id, '_twitch_id_chanell', $my_data );
+    if ( !empty( $my_data ) ) {
+        // Обновляем данные в базе данных.
+        update_post_meta( $post_id, '_youtube_id_channel', $my_data );
+    }
 }
-add_action( 'save_post', 'save_twitch_id_chanell' );
+add_action( 'save_post', 'save_twitch_id_channel' );

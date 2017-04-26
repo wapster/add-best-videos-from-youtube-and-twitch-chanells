@@ -113,6 +113,7 @@ function search_in_dir ( $folder, $file ) {
 }
 
 
+// Парсим канал на Youtube и пишем данные в файл
 function youtube_parsing( $channel_id, $cnt = 3) {
     // специальный адрес, отвечающий за выдачу фида
     $url = 'https://www.googleapis.com/youtube/v3/search?part=snippet'
@@ -144,6 +145,10 @@ function youtube_parsing( $channel_id, $cnt = 3) {
         $arr[] = $t;
     }
 
+    // записываем в файл
+    // if (file_exists)
+    // если файл доступен -> пишем в него, если нет -> создаем
+
     return $arr;
 }
 
@@ -162,7 +167,7 @@ function add_video_to_content( $content ) {
         $links = youtube_parsing( $channel_id );
         foreach ($links as $id_video) {
             //  https://www.youtube.com/watch?v=O8W4P2Gre_g
-            $link .= "<iframe width='640' height='360' src='https://www.youtube.com/embed/$id_video?rel=0&amp;controls=0&amp;showinfo=0' frameborder='0' allowfullscreen></iframe><br>";
+            $link .= "<iframe width='320' height='180' src='https://www.youtube.com/embed/$id_video?rel=0&amp;controls=0&amp;showinfo=0' frameborder='0' allowfullscreen></iframe>";
             // $link .= 'https://www.youtube.com/watch?v=' . $id_video . '</br>';
         }
 
@@ -211,8 +216,13 @@ function aytvp_settings() {
         // если кэш устарел
         if ( time() - @filemtime( $file ) >= 3600 ) {
             // обновляем данные в файле, т.е ПАРСИМ Youtube
-            echo "кэш устарел";
-        } else echo "кэш ok";
+            // и пишем в файл, который есть
+
+            // читаем файл и отдаем html код - отдельная функция
+        } else {
+            // отдаем данные из кэша,
+            // т.е. читаем файл и создаем html код - отдельная функция.
+        }
 
     } else { // если файла нет
         // парсим Youtube = получаем список id видео
@@ -226,7 +236,8 @@ function aytvp_settings() {
         file_put_contents( $file, $to_text);
         chmod( $file, 0777 );
 
-        // этот массив передаем в контент страницы
+
+        // читаем файл и создаем html код - отдельная функция.
 
     }
 

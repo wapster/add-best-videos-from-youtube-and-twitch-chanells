@@ -29,7 +29,7 @@ define( 'YOUTUBE_APIKEY', $options['youtube_apikey'] );
 define( 'TWITCH_CATEGORY', $options['twitch_category'] );
 define( 'TWITCH_APIKEY', $options['twitch_apikey'] );
 define( 'COUNT_VIDEO', $options['count_video'] );
-// define( 'PARSING_PERIOD', $options['parsing_period'] );
+define( 'PARSING_PERIOD', $options['parsing_period'] );
 
 define( 'WIDTH_VIDEO', $options['width_video'] );
 define( 'HEIGHT_VIDEO', $options['height_video'] );
@@ -64,7 +64,7 @@ function aytvp_activation() {
             'twitch_category'  => '',
             'twitch_apikey'    => '',
             'count_video'      => 2,
-            // 'parsing_period'   => 604800,
+            'parsing_period'   => 604800,
             'width_video'      => 320,
             'height_video'     => 280,
         ];
@@ -214,24 +214,20 @@ function add_video_to_content( $content ) {
 
             // проверяем дату файла и сравниваем со значением кэша
             // если кэш устарел
-            if ( time() - @filemtime( $file ) > 1 ) {
+            if ( time() - @filemtime( $file ) > PARSING_PERIOD ) {
                 // обновляем данные в файле, т.е ПАРСИМ Youtube
                 // и пишем в файл, который есть
                 $arr = youtube_parsing( $channel_id );
                 $out = $content . render_video_from_cache_file( $arr );
-                // return $out;
-                // читаем файл и отдаем html код - отдельная функция
             } else {
                 // отдаем данные из кэша,
                 $arr = youtube_parsing( $channel_id );
                 $out = $content . render_video_from_cache_file( $arr );
-                // return $out;
             }
 
         } else { // если файла нет
             $arr = youtube_parsing( $channel_id );
             $out = $content . render_video_from_cache_file( $arr );
-            // return $out;
         }
         return $out;
     }
@@ -262,7 +258,7 @@ function aytvp_settings() {
             'twitch_category'    => $_POST['id_twitch_category'],
             'twitch_apikey'      => $_POST['twitch_apikey'],
             'count_video'        => $_POST['count_video'],
-            // 'parsing_period'   => $_POST['parsing_period'],
+            'parsing_period'   => $_POST['parsing_period'],
             'width_video'        => $_POST['width_video'],
             'height_video'       => $_POST['height_video'],
         ];
@@ -410,24 +406,28 @@ function aytvp_settings() {
                 </td>
 
                 <td><br>
-                    <label for="">Ширина и высота превью</label><br>
+                    <label for="">Ширина и высота превью (YouTube)</label><br>
                     <input type="number" size="5" min="120" max="1080" name="width_video" value="<?php echo $options['width_video']; ?>"> x
                     <input type="number" size="5" min="120" max="1080" name="height_video" value="<?php echo $options['height_video']; ?>">
                 </td>
 
+            <tr>
                 <td>
-                    <!-- <label for="">Как часто парсим</label><br>
+                    <label for="">Как часто парсим</label><br>
                     <select name="parsing_period" id="">
-                    <?php //if ( $options['parsing_period'] = 604800 ) : ?>
-                        <option value="604800" selected>раз в неделю</option>
-                        <option value="2592000">раз в месяц</option>
-                    <?php //elseif ( $options['parsing_period'] = 2592000 ) : ?>
-                        <option value="604800">раз в неделю</option>
-                        <option value="2592000" selected>раз в месяц</option>
-                    <?php //endif; ?>
-                    </select> -->
+                    <?php
+                        if ( 604800 == $options['parsing_period'] ) {
+                            echo "<option value='604800' selected>раз в неделю</option>";
+                            echo "<option value='2592000'>раз в месяц</option>";
+                        } elseif ( 2592000 == $options['parsing_period'] ) {
+                            echo "<option value='604800'>раз в неделю</option>";
+                            echo "<option value='2592000' selected>раз в месяц</option>";
+                        }
+                    ?>
+                </select>
                 </td>
             </tr>
+
 
             <tr>
                 <td>

@@ -6,16 +6,10 @@ Description: Добавляет в посты видео с избранных �
 Author: r0ma.ru
 Author URI: http://r0ma.ru
 Version: 0.1
-
-
-my api key
-
-AIzaSyBsZfBUcC14ni0ZZYmkKr6oZKFkkK554ag
-
 */
 
-
-// ini_set( display_errors, 0);
+// скрываем ошибки; 1 - показываем
+ini_set( display_errors, 0);
 
 function debug_aytv($arr) {
     echo "<pre>";
@@ -44,9 +38,9 @@ function aytvp_activation() {
 
     if ( get_option( 'youtube_twitch_parser_settings', '' ) == '' ) {
         $options = [
-            'youtube_category' => '',
+            'youtube_category' => '0',
             'youtube_apikey'   => '',
-            'twitch_category'  => '',
+            'twitch_category'  => '0',
             'twitch_apikey'    => '',
             'count_video'      => 2,
             'parsing_period'   => 604800,
@@ -405,9 +399,8 @@ function aytvp_settings() {
             <tr>
                 <td class="max-width">
                     <label for="youtube">Категория Youtube</label><br>
-                    <!-- <input id="youtube" type="number" min="1" name="id_youtube_category" value="<?php echo $options['youtube_category']; ?>" autocomplete="off"> -->
                     <select name="id_youtube_category">
-                        <option value="" disabled="">-------</option>
+                        <option value="0" disabled>-------</option>
                         <?php foreach ($cat as $cat_id => $name): ?>
                             <?php if ( $options['youtube_category'] == $cat_id) { ?>
                                 <option value="<?php echo $cat_id; ?>" selected=""><?php echo $name;?></option>
@@ -432,7 +425,7 @@ function aytvp_settings() {
                 <td class="max-width">
                     <label for="twitch">Категория Twitch</label><br>
                     <select name="id_twitch_category">
-                        <option value="" disabled="">-------</option>
+                        <option value="0" disabled>-------</option>
                         <?php foreach ($cat as $cat_id => $name): ?>
                             <?php if ( $options['twitch_category'] == $cat_id) { ?>
                                 <option value="<?php echo $cat_id; ?>" selected=""><?php echo $name;?></option>

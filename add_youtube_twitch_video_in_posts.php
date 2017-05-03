@@ -76,8 +76,6 @@ function aytvp_activation() {
 
 
 
-
-
 // функция получения id канала по id поста к которому относится канал
 function get_id_youtube_channel_from_post_id() {
     global $post;
@@ -165,11 +163,20 @@ function youtube_parsing( $channel_id, $cnt = COUNT_VIDEO ) {
 
 
 // ПАРСИМ TWITCH
-function twitch_parsing( $channel_id, $cnt = COUNT_VIDEO ) {
+function twitch_parsing( $channel_name, $cnt = COUNT_VIDEO ) {
 
+    // получаем ID канала по его названию
+    $request = 'https://api.twitch.tv/kraken/channels/'
+         . $channel_name
+         . '?&client_id=' . TWITCH_APIKEY;
+    $get_content = file_get_contents( $request );
+    $jsn = json_decode( $get_content, true );
+    $channel_id = $jsn['_id'];
+
+    // получаем список видео
     $url = 'https://api.twitch.tv/kraken/channels/'
          . $channel_id
-         . '/videos?limit=' . $cnt
+         . '/videos?api_version=5&limit=' . $cnt
          . '&sort=views'
          . '&client_id=' . TWITCH_APIKEY;
 
@@ -189,7 +196,7 @@ function twitch_parsing( $channel_id, $cnt = COUNT_VIDEO ) {
     // создаем файл и записываем данные
     $upload = wp_upload_dir();
     $dir = $upload['basedir'] . '/youtube-twitch-parser-cache/twitch-channels' ;
-    $file = $dir . "/" . $channel_id . ".txt";
+    $file = $dir . "/" . $channel_name . ".txt";
     file_put_contents( $file, $to_text);
     chmod( $file, 0777 );
 
@@ -242,9 +249,11 @@ function add_video_to_content( $content ) {
     if ( in_category( YOUTUBE_CATEGORY ) ) {
         // получаем id канала
         $channel_id = get_id_youtube_channel_from_post_id();
-
+        if ( $channel_id == '' ) return $content;
+        
         // проверяем наличие файла
         $is_file_video = search_in_dir( 'youtube-channels',  $channel_id. '.txt');
+
 
         // если файл есть
         if ( $is_file_video ) {
@@ -263,7 +272,10 @@ function add_video_to_content( $content ) {
                 $out = $content . render_youtube_video( $arr );
             } else {
                 // отдаем данные из кэша,
-                $arr = youtube_parsing( $channel_id );
+                $upload = wp_upload_dir();
+                $dir = $upload['basedir'] . '/youtube-twitch-parser-cache/youtube-channels' ;
+                $file = $dir . "/" . $channel_id . ".txt";
+                $arr = file( $file, FILE_SKIP_EMPTY_LINES );
                 $out = $content . render_youtube_video( $arr );
             }
 
@@ -278,6 +290,7 @@ function add_video_to_content( $content ) {
     if ( in_category( TWITCH_CATEGORY ) ) {
         // получаем id канала
         $channel_id = get_id_twitch_channel_from_post_id();
+        if ( $channel_id == '' ) return $content;
 
         // проверяем наличие файла
         $is_file_video = search_in_dir( 'twitch-channels',  $channel_id. '.txt');
@@ -299,7 +312,10 @@ function add_video_to_content( $content ) {
                 $out = $content . render_twitch_video( $arr );
             } else {
                 // отдаем данные из кэша,
-                $arr = twitch_parsing( $channel_id );
+                $upload = wp_upload_dir();
+                $dir = $upload['basedir'] . '/youtube-twitch-parser-cache/twitch-channels' ;
+                $file = $dir . "/" . $channel_id . ".txt";
+                $arr = file( $file, FILE_SKIP_EMPTY_LINES );
                 $out = $content . render_twitch_video( $arr );
             }
 
@@ -309,6 +325,8 @@ function add_video_to_content( $content ) {
         }
         return $out;
     }
+
+    return $content;
 }
 
 
@@ -476,6 +494,7 @@ function aytvp_settings() {
                 <td>
                     <p><input type="submit" name="do_save" value="Сохранить"></p>
                 </td>
+
             </tr>
         </table>
         </form>
@@ -531,10 +550,10 @@ function save_youtube_id_channel( $post_id ) {
 	// Все ОК. Теперь, нужно найти и сохранить данные
 	// Очищаем значение поля input.
 	$my_data = sanitize_text_field( $_POST['youtube-id-channel'] );
-    if ( !empty( $my_data ) ) {
+    // if ( !empty( $my_data ) ) {
         // Обновляем данные в базе данных.
         update_post_meta( $post_id, '_youtube_id_channel', $my_data );
-    }
+    // }
 }
 add_action( 'save_post', 'save_youtube_id_channel' );
 
@@ -578,9 +597,9 @@ function save_twitch_id_channel( $post_id ) {
 	// Очищаем значение поля input.
 	$my_data = sanitize_text_field( $_POST['twitch-id-channel'] );
 
-    if ( !empty( $my_data ) ) {
+    // if ( !empty( $my_data ) ) {
         // Обновляем данные в базе данных.
         update_post_meta( $post_id, '_twitch_id_channel', $my_data );
-    }
+    // }
 }
 add_action( 'save_post', 'save_twitch_id_channel' );
